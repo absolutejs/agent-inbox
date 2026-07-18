@@ -1,6 +1,6 @@
 {
   "name": "@absolutejs/agent-inbox",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Durable verified webhooks, event subscriptions, schedules, leases, retries, and dead letters for AI agent triggers.",
   "type": "module",
   "license": "MIT",
@@ -40,7 +40,7 @@
     "check:package": "bun run typecheck && bun run test && bun run build"
   },
   "dependencies": {
-    "@absolutejs/manifest": "^0.2.0",
+    "@absolutejs/manifest": "^0.3.0",
     "@sinclair/typebox": "^0.34.0"
   },
   "devDependencies": {
