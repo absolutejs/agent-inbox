@@ -54,13 +54,16 @@ export type AgentSchedule = {
   target: AgentInboxTarget;
   source: string;
   kind: string;
-  payload: unknown;
+  encodedPayload: unknown;
   intervalMs: number;
   nextAt: string;
   enabled: boolean;
   maxAttempts: number;
   messageTtlMs: number;
   createdAt: string;
+};
+export type AgentScheduleInput = Omit<AgentSchedule, "encodedPayload"> & {
+  payload: unknown;
 };
 export type AgentInboxStore = {
   saveSubscription(value: AgentInboxSubscription): Promise<void>;

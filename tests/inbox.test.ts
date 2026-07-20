@@ -72,6 +72,11 @@ describe("agent inbox", () => {
     const inbox = createAgentInbox({
       store,
       verifiers: {},
+      codec: {
+        encode: async (value) => ({ ciphertext: btoa(JSON.stringify(value)) }),
+        decode: async (value) =>
+          JSON.parse(atob((value as { ciphertext: string }).ciphertext)),
+      },
       now: () => Date.parse("2026-07-15T00:00:00Z"),
       id: () => "message",
     });
@@ -88,6 +93,9 @@ describe("agent inbox", () => {
       messageTtlMs: 60_000,
       createdAt: "2026-07-14T00:00:00Z",
     });
+    const [stored] = await inbox.listSchedules("tenant");
+    expect(stored).not.toHaveProperty("payload");
+    expect(stored?.encodedPayload).toEqual({ ciphertext: "e30=" });
     expect((await inbox.tickSchedule())?.sourceEventId).toBe(
       "daily:2026-07-15T00:00:00Z",
     );

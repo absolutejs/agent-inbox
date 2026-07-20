@@ -5,6 +5,7 @@ import type {
   AgentInboxSubscription,
   AgentInboxVerifier,
   AgentSchedule,
+  AgentScheduleInput,
 } from "./types";
 const identity: AgentInboxCodec = {
   encode: async (value) => structuredClone(value),
@@ -78,12 +79,19 @@ export const createAgentInbox = ({
     tenantId: string;
     enabled: boolean;
   }) => store.setSubscriptionEnabled(input),
-  schedule: (value: AgentSchedule) => {
+  schedule: async (value: AgentScheduleInput) => {
     validateTarget(value.target);
     validateDelivery(value);
     if (!Number.isSafeInteger(value.intervalMs) || value.intervalMs < 1000)
       throw new Error("Schedule interval must be at least one second");
-    return store.saveSchedule(value);
+    const { payload, ...schedule } = value;
+    return store.saveSchedule({
+      ...schedule,
+      encodedPayload: await codec.encode(payload, {
+        tenantId: value.target.tenantId,
+        messageId: `schedule:${value.id}`,
+      }),
+    });
   },
   listSchedules: (tenantId?: string, limit = 100) =>
     store.listSchedules({ tenantId, limit }),
@@ -176,6 +184,10 @@ export const createAgentInbox = ({
       Date.parse(occurrence) + schedule.intervalMs,
     ).toISOString();
     const messageId = id();
+    const payload = await codec.decode(schedule.encodedPayload, {
+      tenantId: schedule.target.tenantId,
+      messageId: `schedule:${schedule.id}`,
+    });
     const message = await store.enqueue({
       id: messageId,
       subscriptionId: `schedule:${schedule.id}`,
@@ -183,7 +195,7 @@ export const createAgentInbox = ({
       source: schedule.source,
       sourceEventId: `${schedule.id}:${occurrence}`,
       kind: schedule.kind,
-      encodedPayload: await codec.encode(schedule.payload, {
+      encodedPayload: await codec.encode(payload, {
         tenantId: schedule.target.tenantId,
         messageId,
       }),
