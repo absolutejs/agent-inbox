@@ -10,6 +10,39 @@ const identity: AgentInboxCodec = {
   encode: async (value) => structuredClone(value),
   decode: async (value) => structuredClone(value),
 };
+const MAX_MESSAGE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const validateTarget = (target: AgentInboxMessage["target"]) => {
+  const { actions, wallTimeMs, ...nonnegative } = target.budget;
+  if (!Number.isSafeInteger(actions) || actions < 1)
+    throw new Error("Agent inbox action budget must be positive");
+  if (!Number.isSafeInteger(wallTimeMs) || wallTimeMs < 1)
+    throw new Error("Agent inbox wall-time budget must be positive");
+  if (
+    Object.values(nonnegative).some(
+      (value) => !Number.isSafeInteger(value) || value < 0,
+    )
+  )
+    throw new Error("Agent inbox budgets must be nonnegative integers");
+};
+const validateDelivery = (value: {
+  maxAttempts: number;
+  messageTtlMs: number;
+}) => {
+  if (
+    !Number.isSafeInteger(value.maxAttempts) ||
+    value.maxAttempts < 1 ||
+    value.maxAttempts > 10
+  )
+    throw new Error("Agent inbox maxAttempts must be between 1 and 10");
+  if (
+    !Number.isSafeInteger(value.messageTtlMs) ||
+    value.messageTtlMs < 1000 ||
+    value.messageTtlMs > MAX_MESSAGE_TTL_MS
+  )
+    throw new Error(
+      "Agent inbox message TTL must be between one second and 30 days",
+    );
+};
 export class AgentInboxVerificationError extends Error {
   constructor(message: string) {
     super(message);
@@ -31,12 +64,44 @@ export const createAgentInbox = ({
   id?: () => string;
   maxBodyBytes?: number;
 }) => ({
-  subscribe: (value: AgentInboxSubscription) => store.saveSubscription(value),
+  subscribe: (value: AgentInboxSubscription) => {
+    validateTarget(value.target);
+    validateDelivery(value);
+    if (value.kinds.length === 0)
+      throw new Error("Agent inbox subscription requires at least one kind");
+    return store.saveSubscription(value);
+  },
+  listSubscriptions: (tenantId?: string, limit = 100) =>
+    store.listSubscriptionInventory({ tenantId, limit }),
+  setSubscriptionEnabled: (input: {
+    id: string;
+    tenantId: string;
+    enabled: boolean;
+  }) => store.setSubscriptionEnabled(input),
   schedule: (value: AgentSchedule) => {
+    validateTarget(value.target);
+    validateDelivery(value);
     if (!Number.isSafeInteger(value.intervalMs) || value.intervalMs < 1000)
       throw new Error("Schedule interval must be at least one second");
     return store.saveSchedule(value);
   },
+  listSchedules: (tenantId?: string, limit = 100) =>
+    store.listSchedules({ tenantId, limit }),
+  setScheduleEnabled: (input: {
+    id: string;
+    tenantId: string;
+    enabled: boolean;
+  }) => store.setScheduleEnabled(input),
+  listMessages: (
+    tenantId?: string,
+    status?: AgentInboxMessage["status"],
+    limit = 100,
+  ) => store.listMessages({ tenantId, status, limit }),
+  cancelMessage: (input: { id: string; tenantId: string }) =>
+    store.cancelMessage({
+      ...input,
+      now: new Date(now()).toISOString(),
+    }),
   ingest: async ({
     source,
     eventId,
@@ -92,8 +157,9 @@ export const createAgentInbox = ({
         },
         status: "pending",
         attempts: 0,
-        maxAttempts: 5,
+        maxAttempts: subscription.maxAttempts,
         notBefore: timestamp,
+        expiresAt: new Date(now() + subscription.messageTtlMs).toISOString(),
         createdAt: timestamp,
         updatedAt: timestamp,
       };
@@ -125,6 +191,7 @@ export const createAgentInbox = ({
       status: "pending",
       attempts: 0,
       maxAttempts: schedule.maxAttempts,
+      expiresAt: new Date(now() + schedule.messageTtlMs).toISOString(),
       notBefore: occurrence,
       createdAt: timestamp,
       updatedAt: timestamp,
@@ -203,6 +270,7 @@ export const createAgentRuntimeInboxHandler =
       goal: string;
       input: unknown;
       idempotencyKey: string;
+      budget: AgentInboxMessage["target"]["budget"];
     }): Promise<unknown>;
   }) =>
   async ({
@@ -219,6 +287,7 @@ export const createAgentRuntimeInboxHandler =
         agentId: message.target.agentId,
       },
       agent: message.target.agent,
+      budget: message.target.budget,
       goal: message.target.goal,
       input: {
         event: {

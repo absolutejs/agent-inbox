@@ -62,6 +62,26 @@ export const createPostgresAgentInboxStore = ({
           [v.tenantId, v.source, v.kind],
         )
       ).rows.map((v) => row<AgentInboxSubscription>(v)!),
+    listSubscriptionInventory: async (v) => {
+      const limit = Math.max(1, Math.min(v.limit, 200));
+      const result = v.tenantId
+        ? await client.query<{ document: AgentInboxSubscription | string }>(
+            `SELECT document FROM ${ns}.subscriptions WHERE tenant_id=$1 ORDER BY document->>'createdAt' DESC LIMIT $2`,
+            [v.tenantId, limit],
+          )
+        : await client.query<{ document: AgentInboxSubscription | string }>(
+            `SELECT document FROM ${ns}.subscriptions ORDER BY document->>'createdAt' DESC LIMIT $1`,
+            [limit],
+          );
+      return result.rows.map((value) => row<AgentInboxSubscription>(value)!);
+    },
+    setSubscriptionEnabled: async (v) =>
+      (
+        await client.query(
+          `UPDATE ${ns}.subscriptions SET enabled=$3,document=jsonb_set(document,'{enabled}',to_jsonb($3::boolean)) WHERE id=$1 AND tenant_id=$2 RETURNING id`,
+          [v.id, v.tenantId, v.enabled],
+        )
+      ).rows.length === 1,
     enqueue: async (v) => {
       const result = await client.query<{
         document: AgentInboxMessage | string;
@@ -80,6 +100,37 @@ export const createPostgresAgentInboxStore = ({
       );
       return row<AgentInboxMessage>(result.rows[0])!;
     },
+    listMessages: async (v) => {
+      const params: unknown[] = [];
+      const filters: string[] = [];
+      if (v.tenantId) {
+        params.push(v.tenantId);
+        filters.push(`document->'target'->>'tenantId'=$${params.length}`);
+      }
+      if (v.status) {
+        params.push(v.status);
+        filters.push(`status=$${params.length}`);
+      }
+      params.push(Math.max(1, Math.min(v.limit, 200)));
+      const where = filters.length ? ` WHERE ${filters.join(" AND ")}` : "";
+      return (
+        await client.query<{ document: AgentInboxMessage | string }>(
+          `SELECT document FROM ${ns}.messages${where} ORDER BY document->>'updatedAt' DESC LIMIT $${params.length}`,
+          params,
+        )
+      ).rows.map((value) => row<AgentInboxMessage>(value)!);
+    },
+    cancelMessage: async (v) =>
+      (
+        await client.query(
+          `UPDATE ${ns}.messages SET status='cancelled',document=document || $3::jsonb WHERE id=$1 AND document->'target'->>'tenantId'=$2 AND status='pending' RETURNING id`,
+          [
+            v.id,
+            v.tenantId,
+            JSON.stringify({ status: "cancelled", updatedAt: v.now }),
+          ],
+        )
+      ).rows.length === 1,
     claim: (v) =>
       client.transaction(async (tx) => {
         const found = row<AgentInboxMessage>(
@@ -143,6 +194,26 @@ export const createPostgresAgentInboxStore = ({
         [v.id, v.enabled, v.nextAt, JSON.stringify(v)],
       );
     },
+    listSchedules: async (v) => {
+      const limit = Math.max(1, Math.min(v.limit, 200));
+      const result = v.tenantId
+        ? await client.query<{ document: AgentSchedule | string }>(
+            `SELECT document FROM ${ns}.schedules WHERE document->'target'->>'tenantId'=$1 ORDER BY document->>'createdAt' DESC LIMIT $2`,
+            [v.tenantId, limit],
+          )
+        : await client.query<{ document: AgentSchedule | string }>(
+            `SELECT document FROM ${ns}.schedules ORDER BY document->>'createdAt' DESC LIMIT $1`,
+            [limit],
+          );
+      return result.rows.map((value) => row<AgentSchedule>(value)!);
+    },
+    setScheduleEnabled: async (v) =>
+      (
+        await client.query(
+          `UPDATE ${ns}.schedules SET enabled=$3,document=jsonb_set(document,'{enabled}',to_jsonb($3::boolean)) WHERE id=$1 AND document->'target'->>'tenantId'=$2 RETURNING id`,
+          [v.id, v.tenantId, v.enabled],
+        )
+      ).rows.length === 1,
     claimDueSchedule: async (v) =>
       row<AgentSchedule>(
         (

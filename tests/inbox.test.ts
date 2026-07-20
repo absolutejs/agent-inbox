@@ -9,6 +9,14 @@ const target = {
     descriptorVersion: "1",
     descriptorDigest: "sha256:abc",
   },
+  budget: {
+    actions: 3,
+    costMicros: 100,
+    inputTokens: 100,
+    outputTokens: 100,
+    spendMinor: 0,
+    wallTimeMs: 60_000,
+  },
   goal: "Handle verified event",
 };
 describe("agent inbox", () => {
@@ -39,6 +47,8 @@ describe("agent inbox", () => {
       target,
       source: "github",
       kinds: ["push"],
+      maxAttempts: 3,
+      messageTtlMs: 60_000,
       enabled: true,
       createdAt: "2026-07-15T00:00:00Z",
     });
@@ -75,11 +85,60 @@ describe("agent inbox", () => {
       nextAt: "2026-07-15T00:00:00Z",
       enabled: true,
       maxAttempts: 3,
+      messageTtlMs: 60_000,
       createdAt: "2026-07-14T00:00:00Z",
     });
     expect((await inbox.tickSchedule())?.sourceEventId).toBe(
       "daily:2026-07-15T00:00:00Z",
     );
     expect(await inbox.tickSchedule()).toBeUndefined();
+  });
+  test("inventories and disables tenant triggers and cancels pending messages", async () => {
+    const store = createMemoryAgentInboxStore();
+    const inbox = createAgentInbox({
+      store,
+      verifiers: {
+        github: {
+          id: "github-sha256",
+          verify: async () => ({
+            valid: true,
+            tenantId: "tenant",
+            payload: {},
+          }),
+        },
+      },
+      now: () => Date.parse("2026-07-15T00:00:00Z"),
+      id: () => "message",
+    });
+    await inbox.subscribe({
+      id: "sub",
+      target,
+      source: "github",
+      kinds: ["push"],
+      maxAttempts: 3,
+      messageTtlMs: 60_000,
+      enabled: true,
+      createdAt: "2026-07-15T00:00:00Z",
+    });
+    const [message] = await inbox.ingest({
+      source: "github",
+      eventId: "evt",
+      kind: "push",
+      body: new TextEncoder().encode("{}"),
+      headers: new Headers(),
+    });
+    expect(await inbox.listSubscriptions("tenant")).toHaveLength(1);
+    expect(await inbox.listMessages("tenant")).toHaveLength(1);
+    expect(
+      await inbox.setSubscriptionEnabled({
+        id: "sub",
+        tenantId: "tenant",
+        enabled: false,
+      }),
+    ).toBe(true);
+    expect(
+      await inbox.cancelMessage({ id: message!.id, tenantId: "tenant" }),
+    ).toBe(true);
+    expect((await inbox.listMessages("tenant"))[0]?.status).toBe("cancelled");
   });
 });

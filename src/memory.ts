@@ -23,6 +23,18 @@ export const createMemoryAgentInboxStore = (): AgentInboxStore => {
             item.kinds.includes(kind),
         )
         .map((item) => structuredClone(item)),
+    listSubscriptionInventory: async ({ tenantId, limit }) =>
+      [...subscriptions.values()]
+        .filter((item) => !tenantId || item.target.tenantId === tenantId)
+        .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+        .slice(0, Math.max(1, Math.min(limit, 200)))
+        .map((item) => structuredClone(item)),
+    setSubscriptionEnabled: async ({ id, tenantId, enabled }) => {
+      const item = subscriptions.get(id);
+      if (!item || item.target.tenantId !== tenantId) return false;
+      subscriptions.set(id, { ...item, enabled });
+      return true;
+    },
     enqueue: async (value) => {
       const key = `${value.subscriptionId}:${value.source}:${value.sourceEventId}`;
       const previous = unique.get(key);
@@ -30,6 +42,27 @@ export const createMemoryAgentInboxStore = (): AgentInboxStore => {
       unique.set(key, value.id);
       messages.set(value.id, structuredClone(value));
       return structuredClone(value);
+    },
+    listMessages: async ({ tenantId, status, limit }) =>
+      [...messages.values()]
+        .filter(
+          (item) =>
+            (!tenantId || item.target.tenantId === tenantId) &&
+            (!status || item.status === status),
+        )
+        .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+        .slice(0, Math.max(1, Math.min(limit, 200)))
+        .map((item) => structuredClone(item)),
+    cancelMessage: async ({ id, tenantId, now }) => {
+      const item = messages.get(id);
+      if (
+        !item ||
+        item.target.tenantId !== tenantId ||
+        item.status !== "pending"
+      )
+        return false;
+      messages.set(id, { ...item, status: "cancelled", updatedAt: now });
+      return true;
     },
     claim: async ({ workerId, now, leaseExpiresAt }) => {
       const row = [...messages.values()]
@@ -84,6 +117,18 @@ export const createMemoryAgentInboxStore = (): AgentInboxStore => {
     },
     saveSchedule: async (value) => {
       schedules.set(value.id, structuredClone(value));
+    },
+    listSchedules: async ({ tenantId, limit }) =>
+      [...schedules.values()]
+        .filter((item) => !tenantId || item.target.tenantId === tenantId)
+        .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+        .slice(0, Math.max(1, Math.min(limit, 200)))
+        .map((item) => structuredClone(item)),
+    setScheduleEnabled: async ({ id, tenantId, enabled }) => {
+      const item = schedules.get(id);
+      if (!item || item.target.tenantId !== tenantId) return false;
+      schedules.set(id, { ...item, enabled });
+      return true;
     },
     claimDueSchedule: async ({ now }) =>
       structuredClone(

@@ -3,11 +3,20 @@ export type AgentIdentityPin = {
   descriptorVersion: string;
   descriptorDigest: string;
 };
+export type AgentInboxBudget = {
+  actions: number;
+  costMicros: number;
+  inputTokens: number;
+  outputTokens: number;
+  spendMinor: number;
+  wallTimeMs: number;
+};
 export type AgentInboxTarget = {
   tenantId: string;
   userId: string;
   agentId: string;
   agent: AgentIdentityPin;
+  budget: AgentInboxBudget;
   goal: string;
 };
 export type AgentInboxSubscription = {
@@ -15,6 +24,8 @@ export type AgentInboxSubscription = {
   target: AgentInboxTarget;
   source: string;
   kinds: string[];
+  maxAttempts: number;
+  messageTtlMs: number;
   enabled: boolean;
   createdAt: string;
 };
@@ -27,7 +38,7 @@ export type AgentInboxMessage = {
   kind: string;
   encodedPayload: unknown;
   provenance: { verifiedBy: string; verifiedAt: string; proof?: unknown };
-  status: "pending" | "leased" | "completed" | "dead_letter";
+  status: "pending" | "leased" | "completed" | "dead_letter" | "cancelled";
   attempts: number;
   maxAttempts: number;
   notBefore: string;
@@ -48,6 +59,7 @@ export type AgentSchedule = {
   nextAt: string;
   enabled: boolean;
   maxAttempts: number;
+  messageTtlMs: number;
   createdAt: string;
 };
 export type AgentInboxStore = {
@@ -57,7 +69,26 @@ export type AgentInboxStore = {
     source: string;
     kind: string;
   }): Promise<AgentInboxSubscription[]>;
+  listSubscriptionInventory(input: {
+    tenantId?: string;
+    limit: number;
+  }): Promise<AgentInboxSubscription[]>;
+  setSubscriptionEnabled(input: {
+    id: string;
+    tenantId: string;
+    enabled: boolean;
+  }): Promise<boolean>;
   enqueue(value: AgentInboxMessage): Promise<AgentInboxMessage>;
+  listMessages(input: {
+    tenantId?: string;
+    status?: AgentInboxMessage["status"];
+    limit: number;
+  }): Promise<AgentInboxMessage[]>;
+  cancelMessage(input: {
+    id: string;
+    tenantId: string;
+    now: string;
+  }): Promise<boolean>;
   claim(input: {
     workerId: string;
     now: string;
@@ -77,6 +108,15 @@ export type AgentInboxStore = {
     deadLetter: boolean;
   }): Promise<boolean>;
   saveSchedule(value: AgentSchedule): Promise<void>;
+  listSchedules(input: {
+    tenantId?: string;
+    limit: number;
+  }): Promise<AgentSchedule[]>;
+  setScheduleEnabled(input: {
+    id: string;
+    tenantId: string;
+    enabled: boolean;
+  }): Promise<boolean>;
   claimDueSchedule(input: { now: string }): Promise<AgentSchedule | undefined>;
   advanceSchedule(input: {
     id: string;
