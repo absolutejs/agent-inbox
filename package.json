@@ -1,6 +1,6 @@
 {
   "name": "@absolutejs/agent-inbox",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "Durable verified webhooks, event subscriptions, schedules, leases, retries, and dead letters for AI agent triggers.",
   "type": "module",
   "license": "MIT",
@@ -41,12 +41,15 @@
   },
   "dependencies": {
     "@absolutejs/manifest": "^0.3.0",
-    "@sinclair/typebox": "^0.34.0",
-    "drizzle-orm": "1.0.0-rc.4"
+    "@sinclair/typebox": "^0.34.0"
   },
   "devDependencies": {
     "@types/bun": "^1.3.14",
     "prettier": "3.5.3",
-    "typescript": "5.8.3"
+    "typescript": "5.8.3",
+    "drizzle-orm": "1.0.0-rc.4"
+  },
+  "peerDependencies": {
+    "drizzle-orm": ">=1.0.0-rc.4 <2"
   }
 }
