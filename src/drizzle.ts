@@ -36,6 +36,8 @@ const portableJsonb = customType<{ data: unknown; driverData: unknown }>({
     typeof value === "string" ? JSON.parse(value) : value,
   toDriver: (value) => JSON.stringify(value),
 });
+const encodedJsonb = <Value>(value: Value) =>
+  sql<Value>`${JSON.stringify(value)}::text::jsonb`;
 
 const namespaceOf = (value: string) => {
   if (!/^[a-z_][a-z0-9_]*$/i.test(value))
@@ -141,7 +143,10 @@ export const createDrizzleAgentInboxStore = <DB extends AnyPgDatabase>(
             await transaction
               .update(schedules)
               .set({
-                document: { ...row.document, nextAt: value.nextAt },
+                document: encodedJsonb({
+                  ...row.document,
+                  nextAt: value.nextAt,
+                }),
                 next_at: new Date(value.nextAt),
               })
               .where(
@@ -174,11 +179,11 @@ export const createDrizzleAgentInboxStore = <DB extends AnyPgDatabase>(
             await transaction
               .update(messages)
               .set({
-                document: {
+                document: encodedJsonb({
                   ...row.document,
                   status: "cancelled",
                   updatedAt: value.now,
-                },
+                }),
                 status: "cancelled",
               })
               .where(
@@ -224,7 +229,7 @@ export const createDrizzleAgentInboxStore = <DB extends AnyPgDatabase>(
         const [updated] = await transaction
           .update(messages)
           .set({
-            document: next,
+            document: encodedJsonb(next),
             lease_expires_at: new Date(value.leaseExpiresAt),
             lease_owner: value.workerId,
             status: "leased",
@@ -267,13 +272,13 @@ export const createDrizzleAgentInboxStore = <DB extends AnyPgDatabase>(
             await transaction
               .update(messages)
               .set({
-                document: {
+                document: encodedJsonb({
                   ...row.document,
                   leaseExpiresAt: undefined,
                   leaseOwner: undefined,
                   status: "completed",
                   updatedAt: value.now,
-                },
+                }),
                 lease_expires_at: null,
                 lease_owner: null,
                 status: "completed",
@@ -294,7 +299,7 @@ export const createDrizzleAgentInboxStore = <DB extends AnyPgDatabase>(
         await db
           .insert(messages)
           .values({
-            document: value,
+            document: encodedJsonb(value),
             expires_at: value.expiresAt ? new Date(value.expiresAt) : null,
             id: value.id,
             lease_expires_at: value.leaseExpiresAt
@@ -389,7 +394,7 @@ export const createDrizzleAgentInboxStore = <DB extends AnyPgDatabase>(
             await transaction
               .update(messages)
               .set({
-                document: {
+                document: encodedJsonb({
                   ...row.document,
                   lastError: value.error,
                   leaseExpiresAt: undefined,
@@ -397,7 +402,7 @@ export const createDrizzleAgentInboxStore = <DB extends AnyPgDatabase>(
                   notBefore: value.notBefore,
                   status,
                   updatedAt: value.now,
-                },
+                }),
                 lease_expires_at: null,
                 lease_owner: null,
                 not_before: new Date(value.notBefore),
@@ -418,14 +423,14 @@ export const createDrizzleAgentInboxStore = <DB extends AnyPgDatabase>(
       await db
         .insert(schedules)
         .values({
-          document: value,
+          document: encodedJsonb(value),
           enabled: value.enabled,
           id: value.id,
           next_at: new Date(value.nextAt),
         })
         .onConflictDoUpdate({
           set: {
-            document: value,
+            document: encodedJsonb(value),
             enabled: value.enabled,
             next_at: new Date(value.nextAt),
           },
@@ -436,7 +441,7 @@ export const createDrizzleAgentInboxStore = <DB extends AnyPgDatabase>(
       await db
         .insert(subscriptions)
         .values({
-          document: value,
+          document: encodedJsonb(value),
           enabled: value.enabled,
           id: value.id,
           kinds: value.kinds,
@@ -445,7 +450,7 @@ export const createDrizzleAgentInboxStore = <DB extends AnyPgDatabase>(
         })
         .onConflictDoUpdate({
           set: {
-            document: value,
+            document: encodedJsonb(value),
             enabled: value.enabled,
             kinds: value.kinds,
             source: value.source,
@@ -470,7 +475,10 @@ export const createDrizzleAgentInboxStore = <DB extends AnyPgDatabase>(
             await transaction
               .update(schedules)
               .set({
-                document: { ...row.document, enabled: value.enabled },
+                document: encodedJsonb({
+                  ...row.document,
+                  enabled: value.enabled,
+                }),
                 enabled: value.enabled,
               })
               .where(eq(schedules.id, value.id))
@@ -497,7 +505,10 @@ export const createDrizzleAgentInboxStore = <DB extends AnyPgDatabase>(
             await transaction
               .update(subscriptions)
               .set({
-                document: { ...row.document, enabled: value.enabled },
+                document: encodedJsonb({
+                  ...row.document,
+                  enabled: value.enabled,
+                }),
                 enabled: value.enabled,
               })
               .where(
