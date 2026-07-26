@@ -28,6 +28,11 @@ export const manifest = defineManifest()({
     docsUrl: "https://github.com/absolutejs/agent-inbox",
     accent: "#06b6d4",
   },
+  integration: {
+    description:
+      "The host must supply durable encrypted event storage, webhook verification, subscriptions, schedules, worker leases, retry policy, and runtime handoff.",
+    mode: "code-first",
+  },
   settings: Type.Object({}),
   wiring: [],
 });
